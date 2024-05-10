@@ -5,15 +5,12 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
-import os
 from PIL import Image
+import os
+import shutil
 
-
-# Load and preprocess the dataset
-transform = transforms.Compose([
-	transforms.ToTensor(),
-	transforms.Normalize((0.0,), (1.0,))
-])
+# Normalize the data such that pixel values are floats in [0, 1]
+transform = transforms.Compose([ transforms.ToTensor(), transforms.Normalize((0.0,), (1.0,)) ])
 
 # Load training and test datasets
 train_dataset = torchvision.datasets.FashionMNIST(root='./data', train=True, download=True, transform=transform)
@@ -29,7 +26,7 @@ train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
 val_loader = DataLoader(val_data, batch_size=32, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-# Define the CNN model
+# Define the convolutional neural network model
 class CNN(nn.Module):
 	def __init__(self):
 		super(CNN, self).__init__()
@@ -44,91 +41,91 @@ class CNN(nn.Module):
 			nn.ReLU(),					# ReLU activation
 		)
 		# Fully connected layers
-		self.fc1 = nn.Linear(56 * 11 * 11, 56)  	# 56x5x5 input nodes, 56 output nodes
-		self.relu = nn.ReLU() 					# ReLU activation
-		self.fc2 = nn.Linear(56, 10)			# 56 input nodes, 10 output nodes
-		self.softmax = nn.Softmax(dim=1)		# Softmax activation
+		self.fc1 = nn.Linear(56 * 11 * 11, 56)		# 56x1x11 input nodes, 56 output nodes
+		self.relu = nn.ReLU() 						# ReLU activation
+		self.fc2 = nn.Linear(56, 10)				# 56 input nodes, 10 output nodes
+		self.softmax = nn.Softmax(dim=1)			# Softmax activation
 
+	# Forward pass
 	def forward(self, x):
-		x = self.layer1(x)
-		x = self.layer2(x)
-		x = x.view(-1, 56 * 11 * 11)
-		x = self.relu(self.fc1(x))
-		x = self.softmax(self.fc2(x))
+		x = self.layer1(x) 				# Pass through first convolutional layer
+		x = self.layer2(x)				# Pass through second convolutional layer
+		x = x.view(-1, 56 * 11 * 11)	# Flatten the output from the convolutional layers
+		x = self.relu(self.fc1(x))		# Pass through first fully connected layer with ReLU activation
+		x = self.softmax(self.fc2(x))	# Pass through second fully connected layer with softmax activation
 		return x
 
 # Initialize the model, sparse categorical cross-entropy loss function, and Adam optimizer
 model = CNN()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
+# Used to track training and validation accuracies across epochs
+train_accuracies = []
+val_accuracies = []
+num_epochs = 10
 
 if os.path.exists('model.pth'):
-    model.load_state_dict(torch.load('model.pth'))
-    print("Model loaded, skipping training.")
+	model.load_state_dict(torch.load('model.pth'))
+	print("Model loaded, skipping training.")
 else:
-	# Training the model for 10 epochs
-	train_accuracies = []
-	val_accuracies = []
-	for epoch in range(10):
+	for epoch in range(num_epochs): # Train the model for 10 epochs
+		# Training Phase
 		model.train()
 		running_loss = 0.0
 		correct_train = 0
 		total_train = 0
-		for inputs, labels in train_loader:
-			optimizer.zero_grad()
-			outputs = model(inputs)
-			loss = criterion(outputs, labels)
-			loss.backward()
-			optimizer.step()
+		for inputs, labels in train_loader:	
+			optimizer.zero_grad()				# Zero the parameter gradients
+			outputs = model(inputs)				# Forward pass
+			loss = criterion(outputs, labels)	# Compute loss
+			loss.backward()						# Backward pass
+			optimizer.step()					# Optimize the model
 
-			_, predicted = torch.max(outputs.data, 1)
-			total_train += labels.size(0)
-			correct_train += (predicted == labels).sum().item()
-			running_loss += loss.item()
-
-		train_accuracy = 100 * correct_train / total_train
-
-		# Validation loop
+			_, predicted = torch.max(outputs.data, 1)			# Get predicted labels
+			total_train += labels.size(0)						# Track total observations
+			correct_train += (predicted == labels).sum().item() # Track correct predictions
+			running_loss += loss.item()							# Track running loss
+		train_accuracy = 100 * correct_train / total_train		# Training accuracy
+		
+		# Validation Phase
 		model.eval()
 		correct_val = 0
 		total_val = 0
 		for inputs, labels in val_loader:
-			outputs = model(inputs)
-			_, predicted = torch.max(outputs.data, 1)
-			total_val += labels.size(0)
-			correct_val += (predicted == labels).sum().item()
-
-		val_accuracy = 100 * correct_val / total_val
+			outputs = model(inputs)								# Forward pass
+			_, predicted = torch.max(outputs.data, 1)			# Get predicted labels
+			total_val += labels.size(0)							# Track total observations
+			correct_val += (predicted == labels).sum().item()	# Track correct predictions
+		val_accuracy = 100 * correct_val / total_val			# Validation accuracy
 
 		train_accuracies.append(train_accuracy)
 		val_accuracies.append(val_accuracy)
 		print(f"Epoch {epoch+1}: Loss = {running_loss:.3f}, Train Accuracy = {train_accuracy:.2f}%, Val Accuracy = {val_accuracy:.2f}%")
 	torch.save(model.state_dict(), 'model.pth')
 
-#Evaluate on test set
+# Evaluate on test set
 correct_test = 0
 total_test = 0
 test_examples = {}
-
 model.eval()
-with torch.no_grad():
-	for inputs, labels in test_loader:
-		outputs = model(inputs)
-		_, predicted = torch.max(outputs.data, 1)
-		total_test += labels.size(0)
-		correct_test += (predicted == labels).sum().item()
-
-		for i, pred in enumerate(predicted):
-			if len(test_examples) < 10 and labels[i] not in test_examples and pred != labels[i]:
+with torch.no_grad():										# Disable gradient tracking for evaluation
+	for inputs, labels in test_loader:						# Iterate over test set
+		outputs = model(inputs)								# Forward pass
+		_, predicted = torch.max(outputs.data, 1)			# Get predicted labels
+		total_test += labels.size(0)						# Track total observations
+		correct_test += (predicted == labels).sum().item()	# Track correct predictions
+		for i, pred in enumerate(predicted):				# Track misclassified examples
+			if labels[i] not in test_examples and pred != labels[i]:
 				test_examples[labels[i].item()] = (inputs[i], pred, labels[i])
-test_accuracy = 100 * correct_test / total_test
+test_accuracy = 100 * correct_test / total_test				# Test accuracy
 
 # Save misclassified examples
-os.makedirs("misclassified", exist_ok=True)
+shutil.rmtree("misclassified")
+os.makedirs("misclassified")
 for label, (img, pred, true_label) in test_examples.items():
-    if pred != true_label:
-        img_path = f"misclassified/True{true_label}_Pred{pred}_{label}.png"
-        Image.fromarray(img.squeeze().numpy() * 255).convert('L').save(img_path)
+	if pred != true_label:
+		img_path = f"misclassified/True{true_label}_Pred{pred}_{label}.png"
+		Image.fromarray(img.squeeze().numpy() * 255).convert('L').save(img_path)
 
 # Model performance evaluation
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -137,17 +134,14 @@ print(f"Number of Trainable Parameters: {trainable_params}")
 print(f"Test Accuracy: {test_accuracy:.2f}%")
 print(f"Number of Misclassified Examples: {len(test_examples)}")
 
-try:
-	print(f"Final Train Accuracy: {train_accuracy:.2f}%")
-	print(f"Final Validation Accuracy: {val_accuracy:.2f}%")
-	# Evaluate training and validation accuracy at the end of each epoch, and plot them as line plots
-	plt.figure(figsize=(10, 5))
-	plt.plot(range(10), train_accuracies, label='Training Accuracy')
-	plt.plot(range(10), val_accuracies, label='Validation Accuracy')
-	plt.xlabel('Epochs')
-	plt.ylabel('Accuracy')
-	plt.title('Training and Validation Accuracy per Epoch')
-	plt.legend()
-	plt.show()
-except:
-	pass
+# Evaluate training and validation accuracy at the end of each epoch, and plot them as line plots
+plt.figure(figsize=(num_epochs, 5))
+plt.plot(range(num_epochs), train_accuracies, label='Training Accuracy', color='red')
+plt.plot(range(num_epochs), val_accuracies, label='Validation Accuracy', color='blue')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.title('Training and Validation Accuracy per Epoch')
+plt.legend()
+plt.text(num_epochs-1, train_accuracy, f"Train Acc: {train_accuracy:.2f}%", ha='right', va='bottom', color='red')
+plt.text(num_epochs-1, val_accuracy, f"Val Acc: {val_accuracy:.2f}%", ha='right', va='bottom', color='blue')
+plt.show()
